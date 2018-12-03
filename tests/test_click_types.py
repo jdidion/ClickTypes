@@ -13,7 +13,7 @@ class Foo:
         a: blah
         b: blorf
     """
-    def __init__(self, a: int, b: str):
+    def __init__(self, a: int, b: str = "foo"):
         self.a = a
         self.b = b
 
@@ -23,6 +23,15 @@ class Foo:
 
 @clicktypes.command()
 def main(foo: Foo, *args, bar: int = 1, baz: Optional[float] = None, **kwargs):
+    """Process some metasyntactic variables.
+
+    Args:
+        foo: A Foo
+        *args: Extra args
+        bar: A bar
+        baz: A baz
+        **kwargs: Extra kwargs
+    """
     print(foo)
     print(args)
     print(bar)
