@@ -2,44 +2,27 @@
 
 ClickTypes creates Click-based CLIs using type annotations.
 
-## Creating entrypoints
+The simplest use of ClickTypes requires annotating your main method with `@clicktypes.command`:
 
-* Top-level function
-* Add entry point to setup.py or pyproject.toml
-* Specify parameter types using type hints
-* Specify parameter defaults
-* Create function docstring with parameter help messages
-* Add command decorator; optionally specify short option names,
-  validations, etc.
+```python
+# test.py
+import clicktypes
 
-## Option attribute inference
+@clicktypes.command("main")
+def main(greeting: str, name: str):
+    print(f"{greeting} {name}")
 
-### All Parameters
+if __name__ == "__main__":
+    main()
+```
 
-* name (long): parameter name; underscores converted to dashes unless keep_underscores=True in the command decorator.
-* name (short): starting from the left-most character of the parameter name, the first character that is not used by another parameter or by any built-in; can be overridden by specifying the 'parameter_names' dictionary in the command decorator.
-* type: inferred from the type hint; if type hint is missing, inferred from the default value; if default value is missing, str.
-* required: by default, true for positional arguments (Arguments) and false for keyword arguments (Options); if positionals_as_options=True in the command decorator, positional arguments are instead required Options. Required keyword arguments can be specified in the 'required' list in the command decorator.
-* default: unset for positional arguments, keyword value for keyword arguments.
-* nargs: 1 unless type is Tuple (in which case nargs is the number of arguments to the Tuple).
+```bash
+$ python test.py --help
+Usage: test.py [OPTIONS] [GREETING] [NAME]
 
-### Option-only
-
-* hide_input: False unless the command 'hidden' parameter is specified and includes the parameter name.
-* is_flag: True for keyword arguments of type boolean; assumed to be the True option unless the name starts with 'no'; the other option will always be inferred by adding/removing 'no-'
-* multiple: True for sequence types
-* help: Parsed from docstring.
-
-## Command line processing
-
-1. Tokenized command line passed to Click
-2. Tokens assigned to arguments/options
-3. Unrecognized tokens are handled as follows:
-   * If the function signature has *args, unrecognized positional arguments are passed, otherwise discarded (unless ignore_unrecognized=False)
-   * If the function signature has **kwargs, unrecognized options are passed, otherwise discarded (unless ignore_unrecognized=False)
-4. Type conversions
-5. Conditionals
-6. Validations
+Options:
+  --help  Show this message and exit.
+```
 
 ## Type conversion
 
@@ -87,6 +70,49 @@ or even
 ```
 validation(PositiveEven, (positive, even))
 ```
+
+
+## Details
+
+
+## Creating entrypoints
+
+* Top-level function
+* Add entry point to setup.py or pyproject.toml
+* Specify parameter types using type hints
+* Specify parameter defaults
+* Create function docstring with parameter help messages
+* Add command decorator; optionally specify short option names,
+  validations, etc.
+
+## Option attribute inference
+
+### All Parameters
+
+* name (long): parameter name; underscores converted to dashes unless keep_underscores=True in the command decorator.
+* name (short): starting from the left-most character of the parameter name, the first character that is not used by another parameter or by any built-in; can be overridden by specifying the 'parameter_names' dictionary in the command decorator.
+* type: inferred from the type hint; if type hint is missing, inferred from the default value; if default value is missing, str.
+* required: by default, true for positional arguments (Arguments) and false for keyword arguments (Options); if positionals_as_options=True in the command decorator, positional arguments are instead required Options. Required keyword arguments can be specified in the 'required' list in the command decorator.
+* default: unset for positional arguments, keyword value for keyword arguments.
+* nargs: 1 unless type is Tuple (in which case nargs is the number of arguments to the Tuple).
+
+### Option-only
+
+* hide_input: False unless the command 'hidden' parameter is specified and includes the parameter name.
+* is_flag: True for keyword arguments of type boolean; assumed to be the True option unless the name starts with 'no'; the other option will always be inferred by adding/removing 'no-'
+* multiple: True for sequence types
+* help: Parsed from docstring.
+
+## Command line processing
+
+1. Tokenized command line passed to Click
+2. Tokens assigned to arguments/options
+3. Unrecognized tokens are handled as follows:
+   * If the function signature has *args, unrecognized positional arguments are passed, otherwise discarded (unless ignore_unrecognized=False)
+   * If the function signature has **kwargs, unrecognized options are passed, otherwise discarded (unless ignore_unrecognized=False)
+4. Type conversions
+5. Conditionals
+6. Validations
 
 ## Todo
 

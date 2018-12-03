@@ -124,41 +124,93 @@ VALIDATIONS: Dict[Type, List[Callable]] = {}
 COMPOSITES: Dict[Type, CompositeParameter] = {}
 
 
-def conversion(dest_type):
-    def decorator(f: Callable) -> Callable:
-        click_type = WrapperType(dest_type.__name__, f)
-        CONVERSIONS[dest_type] = click_type
-        return f
+def conversion(arg: Optional[Union[Type, Callable]] = None):
+    """Annotates a conversion function.
 
-    return decorator
+    If called as a function, takes a single argument, the destination type.
+    Otherwise, the destination type is inferred from the function's return
+    type.
+
+    Args:
+        arg: Function or type
+    """
+    if inspect.isfunction(arg):
+        _dest_type = _get_dest_type(arg)
+        CONVERSIONS[_dest_type] = WrapperType(_dest_type.__name__, arg)
+        return arg
+    else:
+        def decorator(f: Callable) -> Callable:
+            dest_type = arg
+            if dest_type is None:
+                dest_type = _get_dest_type(f)
+            click_type = WrapperType(dest_type.__name__, f)
+            CONVERSIONS[dest_type] = click_type
+            return f
+
+        return decorator
 
 
-def composite(**kwargs):
-    def decorator(cls):
-        composite_param = CompositeParameter(cls, kwargs)
-        COMPOSITES[cls] = composite_param
-        return cls
+def composite_type(*args, **kwargs):
+    if args:
+        dest_type = args[0]
+        COMPOSITES[dest_type] = CompositeParameter(dest_type, kwargs)
+        return dest_type
+    else:
+        def decorator(cls):
+            COMPOSITES[cls] = CompositeParameter(cls, kwargs)
+            return cls
 
-    return decorator
-
-
-def composite_factory(match_type: Type, **kwargs) -> Callable[[Callable], Callable]:
-    def decorator(f):
-        composite_param = CompositeParameter(f, kwargs)
-        COMPOSITES[match_type] = composite_param
-        return f
-
-    return decorator
+        return decorator
 
 
-def validation(match_type: Type) -> Callable[[Callable], Callable]:
-    def decorator(f: Callable) -> Callable:
-        if match_type not in VALIDATIONS:
-            VALIDATIONS[match_type] = []
-        VALIDATIONS[match_type].append(f)
-        return f
+def composite_factory(arg: Union[Type, Callable], **kwargs):
+    if inspect.isfunction(arg):
+        _dest_type = _get_dest_type(arg)
+        COMPOSITES[_dest_type] = CompositeParameter(_dest_type, kwargs)
+        return arg
+    else:
+        def decorator(f):
+            dest_type = arg
+            if dest_type is None:
+                dest_type = _get_dest_type(f)
+            COMPOSITES[dest_type] = CompositeParameter(f, kwargs)
+            return f
 
-    return decorator
+        return decorator
+
+
+def validation(arg: Union[Type, Callable]):
+    if inspect.isfunction(arg):
+        _match_type = _get_dest_type(arg)
+        if _match_type not in VALIDATIONS:
+            VALIDATIONS[_match_type] = []
+        VALIDATIONS[_match_type].append(arg)
+        return arg
+    else:
+        def decorator(f: Callable) -> Callable:
+            match_type = arg
+            if match_type is None:
+                match_type = _get_match_type(f)
+            if match_type not in VALIDATIONS:
+                VALIDATIONS[match_type] = []
+            VALIDATIONS[match_type].append(f)
+            return f
+
+        return decorator
+
+
+def _get_dest_type(f):
+    dest_type = inspect.signature(f).return_annotation
+    if not dest_type:
+        raise ValueError(f"Function {f} must have a non-None return annotation")
+    return dest_type
+
+
+def _get_match_type(f):
+    params = inspect.signature(f).parameters
+    if len(params) != 1:
+        raise ValueError(f"Function {f} must have exactly one parameter")
+    return list(params.values())[0].annotation
 
 
 def command(
@@ -167,11 +219,12 @@ def command(
 ) -> Callable[[Callable], ClickTypesCommand]:
     """Creates a new :class:`Command` and uses the decorated function as
     callback. Uses type arguments of decorated function to automatically
-    create:func:`option`\s and :func:`argument`\s. The name of the command
+    create:func:`option`s and :func:`argument`s. The name of the command
     defaults to the name of the function.
 
     Args:
-
+        name:
+        kwargs:
     """
     def decorator(f):
         command_builder = CommandBuilder(f, name, **kwargs)
@@ -240,8 +293,7 @@ class ParamBuilder(metaclass=ABCMeta):
     def command(self) -> ClickTypesCommand:
         pass
 
-    @property
-    def supports_composites(self) -> bool:
+    def handle_composite(self, param_name, param_type) -> bool:
         return False
 
     def _get_long_name(self, param_name: str, keep_underscores: bool) -> str:
@@ -294,12 +346,7 @@ class ParamBuilder(metaclass=ABCMeta):
             if not self._has_order:
                 self.option_order.append(param_name)
 
-            if self.supports_composites and param_type in COMPOSITES:
-                composite_param = COMPOSITES[param_type]
-                builder = composite_param(
-                    param_name, self.command, self._exclude_short_names
-                )
-                self.composites[param_name] = builder
+            if self.handle_composite(param_name, param_type):
                 continue
 
             param_nargs = 1
@@ -408,8 +455,8 @@ class ParamBuilder(metaclass=ABCMeta):
                 # Find validations
                 if param_type in VALIDATIONS:
                     if param_name not in self.validations:
-                        self.validations[param_name] = []
-                        self.validations[param_name].extend(VALIDATIONS[match_type])
+                        self.validations[(param_name,)] = []
+                        self.validations[(param_name,)].extend(VALIDATIONS[match_type])
 
             is_option = param_optional or positionals_as_options
 
@@ -496,7 +543,7 @@ class CompositeBuilder(ParamBuilder):
 
     def _get_long_name(self, param_name: str, keep_underscores: bool) -> str:
         return super()._get_long_name(
-            "{}_{}".format(self.param_name, param_name),
+            f"{self.param_name}_{param_name}",
             keep_underscores
         )
 
@@ -520,12 +567,14 @@ class CommandBuilder(ParamBuilder):
         to_wrap: Callable,
         name: Optional[str] = None,
         command_class: Type[ClickTypesCommand] = ClickTypesCommand,
+        composite_types: Optional[Dict[str, CompositeParameter]] = None,
         **kwargs
     ):
         self._name = name
         self._command_class = command_class
         self._click_command = None
         self.composites = {}
+        self._composite_types = composite_types or {}
         super().__init__(to_wrap, **kwargs)
 
     @property
@@ -536,14 +585,26 @@ class CommandBuilder(ParamBuilder):
     def command(self) -> ClickTypesCommand:
         return self._click_command
 
-    @property
-    def supports_composites(self) -> bool:
+    def handle_composite(self, param_name, param_type) -> bool:
+        if param_name in self._composite_types:
+            composite_param = self._composite_types[param_name]
+        elif param_type in COMPOSITES:
+            composite_param = COMPOSITES[param_type]
+        else:
+            return False
+        builder = composite_param(
+            param_name, self.command, self._exclude_short_names
+        )
+        self.composites[param_name] = builder
         return True
 
     def handle_params(self, **kwargs):
+        desc = None
+        if self._docs and self._docs.description:
+            desc = str(self._docs.description)
         self._click_command = self._command_class(
             self.name,
-            help=str(self._docs.description),
+            help=desc,
             callback=self._wrapped,
             conditionals=self.conditionals,
             validations=self.validations,
