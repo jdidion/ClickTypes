@@ -179,7 +179,10 @@ def composite_factory(arg: Union[Type, Callable], **kwargs):
         return decorator
 
 
-def validation(arg: Union[Type, Callable]):
+def validation(
+    arg: Union[Type, Callable],
+    depends: Optional[Tuple[Callable, ...]] = None
+):
     if inspect.isfunction(arg):
         _match_type = _get_dest_type(arg)
         if _match_type not in VALIDATIONS:
@@ -191,10 +194,20 @@ def validation(arg: Union[Type, Callable]):
             match_type = arg
             if match_type is None:
                 match_type = _get_match_type(f)
+
+            if depends:
+                def composite_validation(*args, **kwargs):
+                    for dep in depends:
+                        dep(*args, **kwargs)
+                    f(*args, **kwargs)
+                target = composite_validation
+            else:
+                target = f
+
             if match_type not in VALIDATIONS:
                 VALIDATIONS[match_type] = []
-            VALIDATIONS[match_type].append(f)
-            return f
+            VALIDATIONS[match_type].append(target)
+            return target
 
         return decorator
 
@@ -214,23 +227,23 @@ def _get_match_type(f):
 
 
 def command(
-    name: Optional[str] = None,
+    arg: Optional[Union[Callable, str]] = None,
     **kwargs
-) -> Callable[[Callable], ClickTypesCommand]:
+):
     """Creates a new :class:`Command` and uses the decorated function as
     callback. Uses type arguments of decorated function to automatically
     create:func:`option`s and :func:`argument`s. The name of the command
     defaults to the name of the function.
 
     Args:
-        name:
-        kwargs:
+        arg: Either the function being annotated or an optional name. If name is
+            not specified, it is taken from the function name.
+        kwargs: Additional keyword args to pass to CommandBuilder.
     """
-    def decorator(f):
-        command_builder = CommandBuilder(f, name, **kwargs)
-        return command_builder.command
-
-    return decorator
+    if callable(arg):
+        return CommandBuilder(arg, **kwargs).command
+    else:
+        return lambda f: CommandBuilder(f, arg, **kwargs).command
 
 
 class ParamBuilder(metaclass=ABCMeta):
@@ -342,6 +355,12 @@ class ParamBuilder(metaclass=ABCMeta):
             param_default = param.default
             has_default = param.default not in {inspect.Parameter.empty, None}
             param_optional = has_default
+
+            if param_type is None:
+                if has_default:
+                    param_type = type(param_default)
+                else:
+                    param_type = str
 
             if not self._has_order:
                 self.option_order.append(param_name)
@@ -568,6 +587,7 @@ class CommandBuilder(ParamBuilder):
         name: Optional[str] = None,
         command_class: Type[ClickTypesCommand] = ClickTypesCommand,
         composite_types: Optional[Dict[str, CompositeParameter]] = None,
+        extra_click_kwargs: Optional[dict] = None,
         **kwargs
     ):
         self._name = name
@@ -575,6 +595,7 @@ class CommandBuilder(ParamBuilder):
         self._click_command = None
         self.composites = {}
         self._composite_types = composite_types or {}
+        self._extra_click_kwargs = extra_click_kwargs or {}
         super().__init__(to_wrap, **kwargs)
 
     @property
@@ -609,7 +630,7 @@ class CommandBuilder(ParamBuilder):
             conditionals=self.conditionals,
             validations=self.validations,
             composites=self.composites,
-            **kwargs
+            **self._extra_click_kwargs
         )
         super().handle_params(**kwargs)
         for param_name in self.option_order:
