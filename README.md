@@ -197,6 +197,17 @@ Options:
   --help        Show this message and exit.
 ```
 
+## Installation
+
+```bash
+$ pip intall clicktypes
+```
+
+## Dependencies
+
+* Python 3.6+
+* docparse
+
 ## Details
 
 ### Option attribute inference
