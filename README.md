@@ -169,7 +169,7 @@ clicktypes.validation(PositiveEven, (positive, even))
 
 ### Docstring utilization
 
-ClickTypes uses the [docparse](library) to parse the docstrings of command functions and composites to extract help text. Note that currently docparse only supports Google-style docstrings.
+ClickTypes uses the [docparse](https://github.com/jdidion/docparse) library to parse the docstrings of command functions and composites to extract help text. Note that currently docparse only supports Google-style docstrings.
 
 ```python
 # test.py
