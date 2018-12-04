@@ -155,7 +155,7 @@ Note that the typing library does not currently provide an intersection type. Th
 
 2. Create a composite validation:
 
-```
+```python
 @clicktypes.validation(PositiveEven, (positive, even))
 def validate_positive_even(arg: int):
   pass
