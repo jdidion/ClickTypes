@@ -1,6 +1,6 @@
 build/
 dist/
-pokrok.egg-info/
+*.egg-info/
 __pycache__/
 .idea/
 .python-version
