@@ -1,3 +1,5 @@
+Note: this library has been renamed/moved to [AutoClick](https://github.com/jdidion/autoclick).
+
 # ClickTypes
 
 ClickTypes creates Click-based CLIs using type annotations.
